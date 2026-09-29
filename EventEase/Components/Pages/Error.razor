@@ -1,0 +1,23 @@
+@page "/Error"
+@using System.Diagnostics
+
+<PageTitle>Terjadi kesalahan - EventEase</PageTitle>
+
+<div class="notfound" role="alert">
+    <h1>Terjadi kesalahan</h1>
+    <p>Permintaan Anda tidak dapat diproses. Silakan coba lagi beberapa saat lagi.</p>
+    @if (!string.IsNullOrEmpty(requestId))
+    {
+        <p class="meta">ID permintaan: <code>@requestId</code></p>
+    }
+    <a class="btn btn-primary" href="/events">← Kembali ke daftar acara</a>
+</div>
+
+@code {
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+
+    private string? requestId;
+
+    protected override void OnInitialized() =>
+        requestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}

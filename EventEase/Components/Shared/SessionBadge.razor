@@ -1,0 +1,14 @@
+@implements IDisposable
+@inject SessionState Session
+
+<span class="session-badge" title="Sesi Anda tersimpan selama tab terbuka dan berakhir setelah 30 menit tidak aktif">
+    Sesi #@Session.Current.ShortId · @Session.Current.PageViews halaman dilihat
+</span>
+
+@code {
+    protected override void OnInitialized() => Session.OnChange += HandleChange;
+
+    private void HandleChange() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Session.OnChange -= HandleChange;
+}

@@ -1,0 +1,151 @@
+@page "/"
+@page "/events"
+@implements IDisposable
+@using System.Diagnostics
+@inject EventService Events
+@inject SessionState Session
+
+<PageTitle>Daftar Acara - EventEase</PageTitle>
+
+<h1>Daftar Acara</h1>
+
+<div class="toolbar">
+    <input class="search" maxlength="100" placeholder="Cari nama atau lokasi acara..."
+           value="@searchInput" @oninput="OnSearchInput" aria-label="Cari acara" />
+
+    <label>Data:
+        <select value="@datasetSize" @onchange="OnDatasetChanged">
+            <option value="0">6 acara (contoh)</option>
+            <option value="1000">1.000 acara</option>
+            <option value="10000">10.000 acara</option>
+            <option value="50000">50.000 acara</option>
+        </select>
+    </label>
+
+    <label title="Hanya untuk perbandingan kinerja (maks. @ShowAllCap.ToString("N0") kartu)">
+        <input type="checkbox" checked="@showAll" @onchange="OnShowAllChanged" /> Tanpa paging
+    </label>
+
+    <span class="badge">⭐ Favorit: @Session.Current.FavoriteEventIds.Count</span>
+</div>
+
+<p class="meta perf">
+    ⏱️ Query: @queryMs.ToString("0.000") ms ·
+    Menampilkan @shown.Count.ToString("N0") dari @result.TotalCount.ToString("N0") acara
+    @if (showAll && result.TotalCount > ShowAllCap) { <span>(dibatasi @ShowAllCap.ToString("N0") kartu)</span> }
+</p>
+
+@if (shown.Count == 0)
+{
+    <p>Tidak ada acara yang cocok dengan pencarian Anda.</p>
+}
+else
+{
+    <div class="grid">
+        @foreach (var item in shown)
+        {
+            <EventCard @key="item.Id"
+                       Event="item"
+                       IsFavorite="Session.IsFavorite(item.Id)"
+                       IsFavoriteChanged="@(fav => Session.SetFavoriteAsync(item.Id, fav))" />
+        }
+    </div>
+}
+
+@if (!showAll)
+{
+    <div class="pager">
+        <button class="btn" disabled="@(!result.HasPrevious)" @onclick="PrevPage">← Sebelumnya</button>
+        <span>Halaman @result.Page dari @result.TotalPages.ToString("N0")</span>
+        <button class="btn" disabled="@(!result.HasNext)" @onclick="NextPage">Berikutnya →</button>
+    </div>
+}
+
+@code {
+    private const int PageSize = 12;
+    private const int ShowAllCap = 5000;
+    private const int DebounceMs = 300;
+
+    private string searchInput = string.Empty;
+    private string searchTerm = string.Empty;
+    private int datasetSize;
+    private int page = 1;
+    private bool showAll;
+    private double queryMs;
+
+    private PagedResult<EventItem> result = new(Array.Empty<EventItem>(), 0, 1, PageSize, 1);
+    private IReadOnlyList<EventItem> shown = Array.Empty<EventItem>();
+    private CancellationTokenSource? debounce;
+
+    protected override void OnInitialized()
+    {
+        Session.OnChange += HandleSessionChanged;
+        Load();
+    }
+
+    private void HandleSessionChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private void Load()
+    {
+        var sw = Stopwatch.StartNew();
+
+        if (showAll)
+        {
+            var all = Events.Search(searchTerm, datasetSize);
+            shown = all.Count > ShowAllCap ? all.Take(ShowAllCap).ToList() : all;
+            result = new PagedResult<EventItem>(shown, all.Count, 1, Math.Max(1, shown.Count), 1);
+        }
+        else
+        {
+            result = Events.Query(searchTerm, page, PageSize, datasetSize);
+            page = result.Page;
+            shown = result.Items;
+        }
+
+        sw.Stop();
+        queryMs = sw.Elapsed.TotalMilliseconds;
+    }
+
+    // Debounce: pencarian baru dijalankan 300 ms setelah pengguna berhenti mengetik.
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        searchInput = e.Value?.ToString() ?? string.Empty;
+        debounce?.Cancel();
+        debounce?.Dispose();
+        debounce = new CancellationTokenSource();
+        var token = debounce.Token;
+
+        try
+        {
+            await Task.Delay(DebounceMs, token);
+            searchTerm = searchInput;
+            page = 1;
+            Load();
+        }
+        catch (TaskCanceledException) { /* diganti input yang lebih baru */ }
+    }
+
+    private void OnDatasetChanged(ChangeEventArgs e)
+    {
+        datasetSize = int.TryParse(e.Value?.ToString(), out var size) ? size : 0;
+        page = 1;
+        Load();
+    }
+
+    private void OnShowAllChanged(ChangeEventArgs e)
+    {
+        showAll = e.Value is bool b && b;
+        page = 1;
+        Load();
+    }
+
+    private void PrevPage() { if (result.HasPrevious) { page--; Load(); } }
+    private void NextPage() { if (result.HasNext) { page++; Load(); } }
+
+    public void Dispose()
+    {
+        Session.OnChange -= HandleSessionChanged;
+        debounce?.Cancel();
+        debounce?.Dispose();
+    }
+}

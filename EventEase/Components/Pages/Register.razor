@@ -1,0 +1,136 @@
+@page "/events/{Id:int:min(1)}/register"
+@implements IDisposable
+@inject EventService Events
+@inject RegistrationService Registrations
+@inject SessionState Session
+
+<PageTitle>Pendaftaran - EventEase</PageTitle>
+
+@if (item is null || !EventItemValidator.IsValid(item))
+{
+    <NotFoundMessage Title="Acara tidak ditemukan"
+                     Message="@($"Pendaftaran tidak tersedia: acara dengan id {Id} tidak ditemukan.")" />
+}
+else if (completed is not null)
+{
+    <h1>Pendaftaran Berhasil 🎉</h1>
+    <p>Terima kasih, <strong>@completed.FullName</strong>! @completed.Tickets tiket untuk
+       <strong>@item.Name</strong> telah dicatat.</p>
+    <p class="meta">Kode registrasi: <strong>@completed.Code</strong> · Konfirmasi: @completed.Email</p>
+    <div class="actions">
+        <a class="btn" href="/events/@item.Id">← Detail Acara</a>
+        <a class="btn" href="/events/@item.Id/attendance">Pelacak Kehadiran</a>
+        <a class="btn btn-primary" href="/events">Daftar Acara</a>
+    </div>
+}
+else if (remaining == 0)
+{
+    <h1>Kuota penuh</h1>
+    <p>Maaf, acara <strong>@item.Name</strong> tidak memiliki kuota tersisa.</p>
+    <a class="btn" href="/events">← Daftar Acara</a>
+}
+else
+{
+    <h1>Pendaftaran: @item.Name</h1>
+
+    <EditForm Model="form" OnValidSubmit="HandleSubmitAsync" class="form">
+        <DataAnnotationsValidator />
+
+        @if (!string.IsNullOrEmpty(customError))
+        {
+            <div class="validation-message" role="alert">@customError</div>
+        }
+
+        <label>Nama lengkap
+            <InputText @bind-Value="form.FullName" maxlength="80" autocomplete="name" />
+            <ValidationMessage For="() => form.FullName" />
+        </label>
+
+        <label>Email
+            <InputText @bind-Value="form.Email" maxlength="100" autocomplete="email" />
+            <ValidationMessage For="() => form.Email" />
+        </label>
+
+        <label>Jumlah tiket (maks. @Math.Min(10, remaining))
+            <InputNumber @bind-Value="form.Tickets"
+                         ParsingErrorMessage="Jumlah tiket harus berupa angka bulat." />
+            <ValidationMessage For="() => form.Tickets" />
+        </label>
+
+        <div class="actions">
+            <a class="btn" href="/events/@item.Id">Batal</a>
+            <button class="btn btn-primary" type="submit" disabled="@submitting">Kirim Pendaftaran</button>
+        </div>
+    </EditForm>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private EventItem? item;
+    private RegistrationForm form = new();
+    private Registration? completed;
+    private bool submitting;
+    private bool prefilled;
+    private int remaining;
+    private string? customError;
+
+    protected override void OnInitialized() => Session.OnChange += HandleSessionChanged;
+
+    protected override void OnParametersSet()
+    {
+        item = Events.GetById(Id);
+        form = new RegistrationForm();
+        completed = null;
+        submitting = false;
+        prefilled = false;
+        customError = null;
+        remaining = item is null ? 0 : Math.Max(0, item.Capacity - Registrations.RegisteredTickets(Id));
+        Prefill();
+    }
+
+    // Isi otomatis dari sesi (nama/email pendaftaran sebelumnya) selama formulir masih kosong.
+    private void Prefill()
+    {
+        if (prefilled || completed is not null) return;
+        if (!string.IsNullOrEmpty(form.FullName) || !string.IsNullOrEmpty(form.Email)) return;
+        if (string.IsNullOrEmpty(Session.Current.ContactName) && string.IsNullOrEmpty(Session.Current.ContactEmail)) return;
+
+        form.FullName = Session.Current.ContactName ?? string.Empty;
+        form.Email = Session.Current.ContactEmail ?? string.Empty;
+        prefilled = true;
+    }
+
+    private void HandleSessionChanged() => _ = InvokeAsync(() =>
+    {
+        Prefill();
+        StateHasChanged();
+    });
+
+    private async Task HandleSubmitAsync()
+    {
+        if (submitting || item is null) return;   // cegah klik ganda
+        submitting = true;
+        customError = null;
+
+        try
+        {
+            var result = Registrations.Register(item.Id, form);
+            if (!result.Success)
+            {
+                customError = result.Error;
+                remaining = Math.Max(0, item.Capacity - Registrations.RegisteredTickets(item.Id));
+                return;
+            }
+
+            completed = result.Registration;
+            await Session.SetContactAsync(form.FullName, form.Email);
+        }
+        finally
+        {
+            submitting = false;
+        }
+    }
+
+    public void Dispose() => Session.OnChange -= HandleSessionChanged;
+}

@@ -1,0 +1,77 @@
+@* Event Card (Aktivitas 2):
+   - Validasi input: null / data tidak lengkap -> kartu peringatan, bukan crash.
+   - Two-way binding status favorit (@bind-IsFavorite).
+   - ShouldRender: kartu hanya dirender ulang bila data / status favorit berubah. *@
+
+@if (errors.Count > 0)
+{
+    <article class="event-card invalid" role="alert">
+        <h3>⚠️ Data acara tidak valid</h3>
+        <ul>
+            @foreach (var err in errors)
+            {
+                <li>@err</li>
+            }
+        </ul>
+    </article>
+}
+else
+{
+    var ev = Event!;
+    <article class="event-card @(IsFavorite ? "favorite" : "")">
+        <h3 title="@ev.Name">@ev.Name</h3>
+
+        <p class="meta">📅 @ev.Date.ToString("dddd, dd MMMM yyyy", IdCulture)</p>
+        <p class="meta">📍 @ev.Location</p>
+
+        <label class="fav" for="fav-@ev.Id">
+            <input id="fav-@ev.Id" type="checkbox" checked="@IsFavorite" @onchange="ToggleFavoriteAsync" />
+            Tandai sebagai favorit
+        </label>
+
+        <div class="actions">
+            <a class="btn" href="/events/@ev.Id">Lihat Detail</a>
+            <a class="btn btn-primary" href="/events/@ev.Id/register">Daftar</a>
+        </div>
+    </article>
+}
+
+@code {
+    private static readonly CultureInfo IdCulture = CultureInfo.GetCultureInfo("id-ID");
+
+    private IReadOnlyList<string> errors = Array.Empty<string>();
+    private EventItem? lastEvent;
+    private bool lastFavorite;
+    private bool firstRender = true;
+    private bool shouldRender = true;
+
+    [Parameter] public EventItem? Event { get; set; }
+
+    [Parameter] public bool IsFavorite { get; set; }
+
+    [Parameter] public EventCallback<bool> IsFavoriteChanged { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        shouldRender = firstRender
+                       || !ReferenceEquals(lastEvent, Event)
+                       || lastFavorite != IsFavorite;
+
+        if (shouldRender)
+            errors = EventItemValidator.GetErrors(Event);
+
+        lastEvent = Event;
+        lastFavorite = IsFavorite;
+        firstRender = false;
+    }
+
+    protected override bool ShouldRender() => shouldRender;
+
+    private async Task ToggleFavoriteAsync(ChangeEventArgs e)
+    {
+        // Nilai bukan bool (mis. null) dianggap false, bukan exception.
+        IsFavorite = e.Value is bool value && value;
+        shouldRender = true;
+        await IsFavoriteChanged.InvokeAsync(IsFavorite);
+    }
+}

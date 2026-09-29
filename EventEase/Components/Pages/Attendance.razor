@@ -1,0 +1,68 @@
+@page "/attendance"
+@implements IDisposable
+@inject RegistrationService Registrations
+
+<PageTitle>Pelacak Kehadiran - EventEase</PageTitle>
+
+<h1>Pelacak Kehadiran</h1>
+<p class="meta">Ringkasan partisipasi semua acara. Data diperbarui langsung saat ada check-in.</p>
+
+@if (summaries.Count == 0)
+{
+    <p>Belum ada pendaftaran. <a href="/events">Lihat daftar acara</a>.</p>
+}
+else
+{
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr><th>Acara</th><th>Peserta</th><th>Tiket / Kapasitas</th><th>Hadir</th><th>Kehadiran</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var s in summaries)
+                {
+                    <tr @key="s.EventId">
+                        <td>@s.EventName</td>
+                        <td>@s.RegistrantCount</td>
+                        <td>@s.RegisteredTickets / @s.Capacity</td>
+                        <td>@s.CheckedInTickets</td>
+                        <td>
+                            <div class="bar" role="progressbar" aria-valuenow="@s.AttendancePercent" aria-valuemin="0" aria-valuemax="100">
+                                <span style="width:@(s.AttendancePercent)%"></span>
+                            </div>
+                            @s.AttendancePercent%
+                        </td>
+                        <td><a class="btn" href="/events/@s.EventId/attendance">Kelola</a></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<AttendanceSummary> summaries = Array.Empty<AttendanceSummary>();
+    private bool disposed;
+
+    protected override void OnInitialized()
+    {
+        summaries = Registrations.GetSummaries();
+        Registrations.Changed += OnRegistrationsChanged;
+    }
+
+    private void OnRegistrationsChanged(int eventId)
+    {
+        if (disposed) return;
+        _ = InvokeAsync(() =>
+        {
+            summaries = Registrations.GetSummaries();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        disposed = true;
+        Registrations.Changed -= OnRegistrationsChanged;
+    }
+}

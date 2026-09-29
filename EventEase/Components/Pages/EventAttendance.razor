@@ -1,0 +1,134 @@
+@page "/events/{Id:int:min(1)}/attendance"
+@implements IDisposable
+@inject EventService Events
+@inject RegistrationService Registrations
+
+<PageTitle>Kehadiran - EventEase</PageTitle>
+
+@if (item is null)
+{
+    <NotFoundMessage Title="Acara tidak ditemukan"
+                     Message="@($"Acara dengan id {Id} tidak tersedia.")" />
+}
+else
+{
+    var rows = Filtered();
+
+    <h1>Kehadiran: @item.Name</h1>
+
+    <div class="stats">
+        <div class="stat"><span>Peserta terdaftar</span><strong>@summary.RegistrantCount</strong></div>
+        <div class="stat"><span>Tiket terjual</span><strong>@summary.RegisteredTickets / @summary.Capacity</strong></div>
+        <div class="stat"><span>Sudah hadir</span><strong>@summary.CheckedInTickets</strong></div>
+        <div class="stat"><span>Tingkat kehadiran</span><strong>@summary.AttendancePercent%</strong></div>
+        <div class="stat"><span>Sisa kuota</span><strong>@summary.Remaining</strong></div>
+    </div>
+
+    <div class="bar big" role="progressbar" aria-valuenow="@summary.AttendancePercent" aria-valuemin="0" aria-valuemax="100">
+        <span style="width:@(summary.AttendancePercent)%"></span>
+    </div>
+
+    <div class="toolbar">
+        <input class="search" maxlength="100" placeholder="Cari nama atau email peserta..."
+               @bind="filter" @bind:event="oninput" aria-label="Cari peserta" />
+        <a class="btn" href="/events/@item.Id">← Detail Acara</a>
+        <a class="btn btn-primary" href="/events/@item.Id/register">+ Pendaftaran Baru</a>
+    </div>
+
+    @if (rows.Count == 0)
+    {
+        <p>@(registrants.Count == 0 ? "Belum ada peserta terdaftar." : "Tidak ada peserta yang cocok.")</p>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr><th>Kode</th><th>Nama</th><th>Email</th><th>Tiket</th><th>Terdaftar</th><th>Status</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in rows)
+                    {
+                        <tr @key="r.Id">
+                            <td>@r.Code</td>
+                            <td>@r.FullName</td>
+                            <td>@r.Email</td>
+                            <td>@r.Tickets</td>
+                            <td>@r.RegisteredAt.ToLocalTime().ToString("dd MMM yyyy HH:mm", IdCulture)</td>
+                            <td>
+                                @if (r.Attended)
+                                {
+                                    <span class="pill ok">Hadir @r.CheckedInAt!.Value.ToLocalTime().ToString("HH:mm", IdCulture)</span>
+                                }
+                                else
+                                {
+                                    <span class="pill">Belum hadir</span>
+                                }
+                            </td>
+                            <td>
+                                <button class="btn @(r.Attended ? "" : "btn-primary")" @onclick="() => Toggle(r)">
+                                    @(r.Attended ? "Batalkan" : "Check-in")
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private static readonly CultureInfo IdCulture = CultureInfo.GetCultureInfo("id-ID");
+
+    [Parameter] public int Id { get; set; }
+
+    private EventItem? item;
+    private IReadOnlyList<Registration> registrants = Array.Empty<Registration>();
+    private AttendanceSummary summary = new(0, string.Empty, 0, 0, 0, 0);
+    private string filter = string.Empty;
+    private bool disposed;
+
+    protected override void OnInitialized() => Registrations.Changed += OnRegistrationsChanged;
+
+    protected override void OnParametersSet()
+    {
+        item = Events.GetById(Id);
+        Load();
+    }
+
+    private void Load()
+    {
+        registrants = Registrations.GetByEvent(Id);
+        summary = Registrations.GetSummary(Id);
+    }
+
+    private IReadOnlyList<Registration> Filtered()
+    {
+        var term = filter?.Trim();
+        if (string.IsNullOrEmpty(term)) return registrants;
+
+        return registrants.Where(r =>
+            r.FullName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+            r.Email.Contains(term, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+
+    private void Toggle(Registration r) => Registrations.SetAttendance(r.Id, !r.Attended);
+
+    // Pembaruan langsung: check-in dari sirkuit/tab lain ikut tampil di sini.
+    private void OnRegistrationsChanged(int eventId)
+    {
+        if (disposed || eventId != Id) return;
+        _ = InvokeAsync(() =>
+        {
+            Load();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        disposed = true;
+        Registrations.Changed -= OnRegistrationsChanged;
+    }
+}

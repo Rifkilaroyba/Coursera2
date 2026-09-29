@@ -1,0 +1,37 @@
+@inherits LayoutComponentBase
+@inject SessionState Session
+
+<header class="site-header">
+    <span class="brand">🎟️ EventEase</span>
+    <NavMenu />
+</header>
+
+<main class="container">
+    <ErrorBoundary @ref="errorBoundary">
+        <ChildContent>@Body</ChildContent>
+        <ErrorContent>
+            <div class="notfound" role="alert">
+                <h1>Terjadi kesalahan tak terduga</h1>
+                <p>Halaman gagal ditampilkan. Silakan coba lagi atau kembali ke daftar acara.</p>
+                <a class="btn btn-primary" href="/events">← Kembali ke daftar acara</a>
+            </div>
+        </ErrorContent>
+    </ErrorBoundary>
+</main>
+
+<footer class="site-footer">
+    © 2026 EventEase - Manajemen Acara Korporat &amp; Sosial · <SessionBadge />
+</footer>
+
+@code {
+    private ErrorBoundary? errorBoundary;
+
+    // Setiap navigasi memulihkan error boundary agar halaman berikutnya normal.
+    protected override void OnParametersSet() => errorBoundary?.Recover();
+
+    // Pemulihan sesi dari sessionStorage hanya bisa dilakukan setelah render interaktif.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await Session.InitializeAsync();
+    }
+}

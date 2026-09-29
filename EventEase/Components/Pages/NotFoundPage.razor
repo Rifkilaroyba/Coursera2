@@ -1,0 +1,16 @@
+@* Catch-all: semua alamat yang tidak cocok dengan halaman lain (mis. /abc, /events/xyz/edit)
+   ditangani di sini, baik saat akses langsung (SSR) maupun navigasi di dalam aplikasi. *@
+@page "/{*path}"
+
+<PageTitle>Halaman tidak ditemukan - EventEase</PageTitle>
+
+<NotFoundMessage Message="@NotFoundText" />
+
+@code {
+    [Parameter] public string? Path { get; set; }
+
+    private string NotFoundText => "Alamat /" + ShortPath + " tidak tersedia.";
+
+    private string ShortPath =>
+        string.IsNullOrEmpty(Path) ? "" : (Path.Length > 60 ? Path[..60] + "…" : Path);
+}

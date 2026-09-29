@@ -1,0 +1,62 @@
+@page "/events/{Id:int:min(1)}"
+@inject EventService Events
+@inject RegistrationService Registrations
+@inject SessionState Session
+@inject NavigationManager Nav
+
+<PageTitle>@(item?.Name ?? "Acara tidak ditemukan") - EventEase</PageTitle>
+
+@if (item is null)
+{
+    <NotFoundMessage Title="Acara tidak ditemukan"
+                     Message="@($"Acara dengan id {Id} tidak tersedia.")" />
+}
+else if (!EventItemValidator.IsValid(item))
+{
+    <NotFoundMessage Title="Data acara tidak valid"
+                     Message="Data acara ini rusak dan tidak dapat ditampilkan." />
+}
+else
+{
+    <h1>@item.Name</h1>
+
+    <div class="detail">
+        <p class="meta">📅 @item.Date.ToString("dddd, dd MMMM yyyy", IdCulture)</p>
+        <p class="meta">📍 @item.Location</p>
+        <p class="meta">👥 Kapasitas: @item.Capacity.ToString("N0") orang · Sisa kuota: @remaining.ToString("N0")</p>
+        <p>@item.Description</p>
+
+        <div class="actions">
+            <a class="btn" href="/events">← Daftar Acara</a>
+            <a class="btn" href="/events/@item.Id/attendance">Pelacak Kehadiran</a>
+            <button class="btn btn-primary" disabled="@(remaining == 0)" @onclick="GoToRegister">
+                @(remaining == 0 ? "Kuota Penuh" : "Daftar Sekarang")
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly CultureInfo IdCulture = CultureInfo.GetCultureInfo("id-ID");
+
+    [Parameter] public int Id { get; set; }
+
+    private EventItem? item;
+    private int remaining;
+    private int trackedId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        item = Events.GetById(Id);
+        remaining = item is null ? 0 : Math.Max(0, item.Capacity - Registrations.RegisteredTickets(Id));
+
+        // Catat kunjungan sekali per acara pada komponen ini.
+        if (item is not null && EventItemValidator.IsValid(item) && trackedId != Id)
+        {
+            trackedId = Id;
+            await Session.TrackVisitAsync(Id);
+        }
+    }
+
+    private void GoToRegister() => Nav.NavigateTo($"/events/{Id}/register");
+}

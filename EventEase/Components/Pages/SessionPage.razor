@@ -1,0 +1,80 @@
+@page "/session"
+@implements IDisposable
+@inject SessionState Session
+@inject EventService Events
+
+<PageTitle>Sesi Saya - EventEase</PageTitle>
+
+<h1>Sesi Saya</h1>
+
+@if (Session.RenewedAfterTimeout)
+{
+    <p class="notice">Sesi sebelumnya berakhir karena tidak aktif lebih dari 30 menit. Sesi baru telah dimulai.</p>
+}
+
+<div class="stats">
+    <div class="stat"><span>ID Sesi</span><strong>#@Current.ShortId</strong></div>
+    <div class="stat"><span>Mulai</span><strong>@Current.StartedAt.ToLocalTime().ToString("HH:mm:ss", IdCulture)</strong></div>
+    <div class="stat"><span>Aktivitas terakhir</span><strong>@Current.LastActivity.ToLocalTime().ToString("HH:mm:ss", IdCulture)</strong></div>
+    <div class="stat"><span>Halaman acara dilihat</span><strong>@Current.PageViews</strong></div>
+    <div class="stat"><span>Penyimpanan</span><strong>@(Session.IsInitialized ? "Tersimpan" : "Memuat…")</strong></div>
+</div>
+
+<div class="detail">
+    <h3>Acara yang pernah dilihat</h3>
+    @if (Current.VisitedEventIds.Count == 0)
+    {
+        <p class="meta">Belum ada.</p>
+    }
+    else
+    {
+        <ul>
+            @foreach (var id in Current.VisitedEventIds.AsEnumerable().Reverse())
+            {
+                <li><a href="/events/@id">@NameOf(id)</a></li>
+            }
+        </ul>
+    }
+
+    <h3>Favorit</h3>
+    @if (Current.FavoriteEventIds.Count == 0)
+    {
+        <p class="meta">Belum ada favorit. Tandai acara di <a href="/events">daftar acara</a>.</p>
+    }
+    else
+    {
+        <ul>
+            @foreach (var id in Current.FavoriteEventIds)
+            {
+                <li><a href="/events/@id">@NameOf(id)</a></li>
+            }
+        </ul>
+    }
+
+    <h3>Kontak tersimpan</h3>
+    <p class="meta">
+        @(string.IsNullOrEmpty(Current.ContactName) ? "Belum ada (terisi otomatis setelah Anda mendaftar)." : $"{Current.ContactName} · {Current.ContactEmail}")
+    </p>
+
+    <p class="meta">Sesi disimpan terenkripsi di browser, bertahan saat halaman di-refresh, dan berakhir bila tab ditutup atau tidak aktif 30 menit.</p>
+
+    <div class="actions">
+        <button class="btn" @onclick="ResetAsync">Mulai sesi baru</button>
+    </div>
+</div>
+
+@code {
+    private static readonly CultureInfo IdCulture = CultureInfo.GetCultureInfo("id-ID");
+
+    private UserSession Current => Session.Current;
+
+    protected override void OnInitialized() => Session.OnChange += HandleChange;
+
+    private string NameOf(int id) => Events.GetById(id)?.Name ?? $"Acara #{id}";
+
+    private void HandleChange() => _ = InvokeAsync(StateHasChanged);
+
+    private Task ResetAsync() => Session.ResetAsync();
+
+    public void Dispose() => Session.OnChange -= HandleChange;
+}

@@ -1,0 +1,21 @@
+@* Pesan "tidak ditemukan" yang dipakai ulang. Saat render di server (SSR)
+   status HTTP diubah menjadi 404 agar sesuai praktik terbaik. *@
+
+<div class="notfound" role="alert">
+    <h1>@Title</h1>
+    <p>@Message</p>
+    <a class="btn btn-primary" href="/events">← Kembali ke daftar acara</a>
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "Halaman tidak ditemukan";
+    [Parameter] public string Message { get; set; } = "Maaf, alamat yang Anda tuju tidak tersedia.";
+
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (HttpContext is not null && !HttpContext.Response.HasStarted)
+            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+    }
+}
